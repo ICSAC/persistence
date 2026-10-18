@@ -1,0 +1,81 @@
+{
+  "title": "Persistence: code and data index",
+  "publisher": "Institute for Complexity Science and Advanced Computing (ICSAC)",
+  "journal_url": "https://icsacinstitute.org/journal/",
+  "policy": "Links only. Authors host their own code and data; ICSAC links to it and doesn't host, run or maintain it.",
+  "updated": "2026-10-17",
+  "articles": [
+    {
+      "volume": "1",
+      "volume_year": "2026",
+      "doi": "10.5281/zenodo.18182662",
+      "title": "The Existence Threshold",
+      "article_url": "https://icsacinstitute.org/publications/the-existence-threshold",
+      "accepted": "2026-04-19",
+      "code_data_url": null,
+      "hosted_on": null,
+      "hosted_by": null,
+      "link_status": null
+    },
+    {
+      "volume": "1",
+      "volume_year": "2026",
+      "doi": "10.5281/zenodo.18262424",
+      "title": "Pattern Loss at Dimensional Boundaries: The 86% Scaling Law",
+      "article_url": "https://icsacinstitute.org/publications/pattern-loss-at-dimensional-boundaries",
+      "accepted": "2026-04-19",
+      "code_data_url": null,
+      "hosted_on": null,
+      "hosted_by": null,
+      "link_status": null
+    },
+    {
+      "volume": "1",
+      "volume_year": "2026",
+      "doi": "10.5281/zenodo.18319430",
+      "title": "The Dimensional Loss Theorem: Proof and Neural Network Validation",
+      "article_url": "https://icsacinstitute.org/publications/the-dimensional-loss-theorem",
+      "accepted": "2026-04-19",
+      "code_data_url": null,
+      "hosted_on": null,
+      "hosted_by": null,
+      "link_status": null
+    },
+    {
+      "volume": "1",
+      "volume_year": "2026",
+      "doi": "10.5281/zenodo.18373411",
+      "title": "The Dynamic Existence Threshold: Organizational Consciousness Across Complex Systems",
+      "article_url": "https://icsacinstitute.org/publications/the-dynamic-existence-threshold",
+      "accepted": "2026-04-19",
+      "code_data_url": null,
+      "hosted_on": null,
+      "hosted_by": null,
+      "link_status": null
+    },
+    {
+      "volume": "1",
+      "volume_year": "2026",
+      "doi": "10.5281/zenodo.20211868",
+      "title": "Architecture-Independent Geometric Memory Failure: Two Parallel Lines of Evidence",
+      "article_url": "https://icsacinstitute.org/publications/architecture-independent-geometric-memory-failure",
+      "accepted": "2026-05-15",
+      "code_data_url": null,
+      "hosted_on": null,
+      "hosted_by": null,
+      "link_status": null
+    },
+    {
+      "volume": "1",
+      "volume_year": "2026",
+      "doi": "10.67697/icsac.2026.001",
+      "title": "When Reduction Becomes Lossy: An Intervention-Relative Test of Explanatory Boundaries",
+      "article_url": "https://icsacinstitute.org/publications/when-reduction-becomes-lossy",
+      "accepted": "2026-09-29",
+      "code_data_url": "https://doi.org/10.5281/zenodo.23042786",
+      "hosted_on": "Zenodo",
+      "hosted_by": "Author",
+      "link_status": "reachable"
+    }
+  ]
+}
