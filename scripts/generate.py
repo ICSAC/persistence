@@ -50,7 +50,10 @@ VOLUMES_PATH = "src/lib/persistence.ts"
 PUBLIC_DIR = "public"
 CC_BY_4 = "https://creativecommons.org/licenses/by/4.0/"
 SITE = "https://icsacinstitute.org"
-USER_AGENT = "ICSAC-persistence-code-index/1.0 (+https://icsacinstitute.org; mailto:info@icsacinstitute.org)"
+# Names itself as a link checker and a bot: both words are on the COUNTER-Robots list
+# the site's usage counter filters with, so a check never counts as a reader.
+USER_AGENT = ("ICSAC-persistence-index/1.1 (link checker bot; +https://github.com/ICSAC/persistence; "
+              "mailto:info@icsacinstitute.org)")
 TIMEOUT = 20
 REQUIRED = ("slug", "title", "doi", "accepted_date")
 

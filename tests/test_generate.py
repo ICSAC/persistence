@@ -11,6 +11,7 @@ import contextlib
 import http.server
 import io
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -261,6 +262,9 @@ def pdf_column() -> None:
             check(rows["bare-only"]["pdf_url"] == "https://icsacinstitute.org/papers/ICSAC-SUB-00043.pdf",
                   "git mode: an uncommitted covered file is not")
             check(rows["covered"]["pdf_status"] == "not checked", "--no-check: PDFs read not checked")
+            # COUNTER-Robots patterns "bot" and "link.?check": a check must never read as a download
+            check(re.search(r"bot", generate.USER_AGENT, re.I) and re.search(r"link.?check", generate.USER_AGENT, re.I),
+                  "the checker's user agent is one the site's usage counter files as a robot")
     finally:
         srv.shutdown()
 
