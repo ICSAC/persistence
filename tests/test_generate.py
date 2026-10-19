@@ -122,6 +122,17 @@ def main() -> int:
             check(len(csv_lines) == 4, "CSV has a header and three rows")
             check(doc["updated"] == "2026-10-17", "first build stamps today")
 
+            # 1b. volume and order follow the publication date; "accepted" stays the acceptance
+            pub_rows = generate.build_rows([
+                {"slug": "late", "title": "Late", "doi": "10.67697/icsac.2027.002",
+                 "accepted_date": "2027-05-30", "published_date": "2027-06-02"},
+                {"slug": "early", "title": "Early", "doi": "10.67697/icsac.2027.003", "accepted_date": "2027-05-31"},
+            ], generate.parse_volumes(VOLUMES_TS), check=False)
+            check([r["article_url"].rsplit("/", 1)[1] for r in pub_rows] == ["early", "late"],
+                  "rows in order of publication")
+            check(pub_rows[1]["volume"] == "2" and pub_rows[1]["accepted"] == "2027-05-30",
+                  "an article accepted before a volume opens but published after it is in the new volume")
+
             # 2. unchanged rows keep the old date; a changed row moves it
             code, _ = run(common + ["--today", "2026-10-20"])
             check(json.loads((out / "index.json").read_text())["updated"] == "2026-10-17", "unchanged rows keep the last-changed date")

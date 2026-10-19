@@ -285,12 +285,19 @@ def crossref_supplement(doi: str) -> tuple[str, list[str]]:
 
 # ── build ───────────────────────────────────────────────────────────────────
 
+def published_on(e: dict) -> str:
+    """The publication date (published_date, else accepted_date). An article joins
+    the open volume the day its DOI registers, so the volume and the order follow
+    it, as on /journal; the "accepted" column stays the acceptance date."""
+    return (e.get("published_date") or e["accepted_date"])[:10]
+
+
 def build_rows(registry: list[dict], volumes: list[dict], check: bool,
                has_file=lambda path: False, pdf_base: str = SITE) -> list[dict]:
-    ordered = sorted(registry, key=lambda e: (e["accepted_date"][:10], bare_doi(e["doi"]).lower()))
+    ordered = sorted(registry, key=lambda e: (published_on(e), bare_doi(e["doi"]).lower()))
     rows = []
     for e in ordered:
-        vol = volume_for(e["accepted_date"], volumes)
+        vol = volume_for(published_on(e), volumes)
         link = (e.get("code_data_url") or "").strip() or None
         pdf, edition = pdf_path(e, has_file)
         row = {
