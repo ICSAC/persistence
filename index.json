@@ -1,9 +1,10 @@
 {
-  "title": "Persistence: code and data index",
+  "title": "Persistence: article index",
   "publisher": "Institute for Complexity Science and Advanced Computing (ICSAC)",
   "journal_url": "https://icsacinstitute.org/journal/",
   "policy": "Links only. Authors host their own code and data; ICSAC links to it and doesn't host, run or maintain it.",
-  "updated": "2026-10-17",
+  "license": "CC0-1.0 (this index only; each article is under the licence on its own page, its code and data under their author's)",
+  "updated": "2026-10-19",
   "articles": [
     {
       "volume": "1",
@@ -12,6 +13,9 @@
       "title": "The Existence Threshold",
       "article_url": "https://icsacinstitute.org/publications/the-existence-threshold",
       "accepted": "2026-04-19",
+      "pdf_url": "https://icsacinstitute.org/papers/18182662-icsac.pdf",
+      "pdf_edition": "ICSAC edition",
+      "pdf_status": "reachable",
       "code_data_url": null,
       "hosted_on": null,
       "hosted_by": null,
@@ -24,10 +28,13 @@
       "title": "Pattern Loss at Dimensional Boundaries: The 86% Scaling Law",
       "article_url": "https://icsacinstitute.org/publications/pattern-loss-at-dimensional-boundaries",
       "accepted": "2026-04-19",
-      "code_data_url": null,
-      "hosted_on": null,
-      "hosted_by": null,
-      "link_status": null
+      "pdf_url": "https://icsacinstitute.org/papers/18262424-icsac.pdf",
+      "pdf_edition": "ICSAC edition",
+      "pdf_status": "reachable",
+      "code_data_url": "https://github.com/existencethreshold/dimensional-boundary-loss",
+      "hosted_on": "GitHub (existencethreshold)",
+      "hosted_by": "Author",
+      "link_status": "reachable"
     },
     {
       "volume": "1",
@@ -36,10 +43,13 @@
       "title": "The Dimensional Loss Theorem: Proof and Neural Network Validation",
       "article_url": "https://icsacinstitute.org/publications/the-dimensional-loss-theorem",
       "accepted": "2026-04-19",
-      "code_data_url": null,
-      "hosted_on": null,
-      "hosted_by": null,
-      "link_status": null
+      "pdf_url": "https://icsacinstitute.org/papers/18319430-icsac.pdf",
+      "pdf_edition": "ICSAC edition",
+      "pdf_status": "reachable",
+      "code_data_url": "https://github.com/existencethreshold/dimensional-loss-theorem",
+      "hosted_on": "GitHub (existencethreshold)",
+      "hosted_by": "Author",
+      "link_status": "reachable"
     },
     {
       "volume": "1",
@@ -48,10 +58,13 @@
       "title": "The Dynamic Existence Threshold: Organizational Consciousness Across Complex Systems",
       "article_url": "https://icsacinstitute.org/publications/the-dynamic-existence-threshold",
       "accepted": "2026-04-19",
-      "code_data_url": null,
-      "hosted_on": null,
-      "hosted_by": null,
-      "link_status": null
+      "pdf_url": "https://icsacinstitute.org/papers/18373411-icsac.pdf",
+      "pdf_edition": "ICSAC edition",
+      "pdf_status": "reachable",
+      "code_data_url": "https://github.com/existencethreshold/dynamic-existence-threshold",
+      "hosted_on": "GitHub (existencethreshold)",
+      "hosted_by": "Author",
+      "link_status": "reachable"
     },
     {
       "volume": "1",
@@ -60,6 +73,9 @@
       "title": "Architecture-Independent Geometric Memory Failure: Two Parallel Lines of Evidence",
       "article_url": "https://icsacinstitute.org/publications/architecture-independent-geometric-memory-failure",
       "accepted": "2026-05-15",
+      "pdf_url": "https://icsacinstitute.org/papers/20211868-icsac.pdf",
+      "pdf_edition": "ICSAC edition",
+      "pdf_status": "reachable",
       "code_data_url": null,
       "hosted_on": null,
       "hosted_by": null,
@@ -72,6 +88,9 @@
       "title": "When Reduction Becomes Lossy: An Intervention-Relative Test of Explanatory Boundaries",
       "article_url": "https://icsacinstitute.org/publications/when-reduction-becomes-lossy",
       "accepted": "2026-09-29",
+      "pdf_url": "https://icsacinstitute.org/papers/ICSAC-SUB-00008-icsac.pdf",
+      "pdf_edition": "ICSAC edition",
+      "pdf_status": "reachable",
       "code_data_url": "https://doi.org/10.5281/zenodo.23042786",
       "hosted_on": "Zenodo",
       "hosted_by": "Author",
