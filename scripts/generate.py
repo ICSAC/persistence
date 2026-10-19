@@ -1,23 +1,28 @@
 #!/usr/bin/env python3
-"""Build the Persistence code and data index.
+"""Build the Persistence article index.
 
-One row per Persistence article: its DOI, its title, the link to the author's
-code and data, and where that link is hosted. Links only: nothing here copies,
-mirrors or stores anyone's files.
+One row per Persistence article: its title and page, its DOI, its PDF on
+icsacinstitute.org, the link to the author's code and data, and where that link
+is hosted. Links only: nothing here copies, mirrors or stores anyone's files.
 
 Source of truth: the journal's article registry (src/data/accepted.json in the
 website repository), read at a committed ref (default origin/main) so the index
 shows what the site has published. Each article page prints its code and data
 link from the same field. Volumes come from src/lib/persistence.ts in the same
-repository, so an article lands in the volume its page shows.
+repository, so an article lands in the volume its page shows. The PDF link
+follows the article page's own rule (src/lib/paper-pdf.ts): the ICSAC edition
+(a cover page in front of the author's unchanged PDF) when there is one, the
+author's original otherwise.
 
 Writes README.md, index.json and index.csv into --out. A link that can't be
 reached is marked "Couldn't reach" and keeps its row; no row is ever dropped.
+Each PDF is checked with one HEAD request (200 and application/pdf), never
+downloaded.
 
 Exit codes:
   0  built, every link reachable (or not checked)
-  1  built, but something needs a look: a link couldn't be reached, a link
-     points into an ICSAC namespace, or Crossref disagrees with the registry
+  1  built, but something needs a look: a link or PDF couldn't be reached, a
+     link points into an ICSAC namespace, or Crossref disagrees with the registry
   2  couldn't build: registry or volume table unreadable, a registry row is
      missing a required field, or the fetch failed (nothing is written)
 """
@@ -42,6 +47,8 @@ from pathlib import Path
 
 REGISTRY_PATH = "src/data/accepted.json"
 VOLUMES_PATH = "src/lib/persistence.ts"
+PUBLIC_DIR = "public"
+CC_BY_4 = "https://creativecommons.org/licenses/by/4.0/"
 SITE = "https://icsacinstitute.org"
 USER_AGENT = "ICSAC-persistence-code-index/1.0 (+https://icsacinstitute.org; mailto:info@icsacinstitute.org)"
 TIMEOUT = 20
@@ -95,6 +102,12 @@ def git_show(repo: Path, ref: str, path: str) -> str:
     if r.returncode != 0:
         raise BuildError(f"couldn't read {path} at {ref}: {r.stderr.strip() or 'git show failed'}")
     return r.stdout
+
+
+def git_has_file(repo: Path, ref: str, path: str) -> bool:
+    r = subprocess.run(["git", "-C", str(repo), "cat-file", "-e", f"{ref}:{path}"],
+                       capture_output=True, text=True)
+    return r.returncode == 0
 
 
 def git_fetch(repo: Path) -> None:
@@ -210,6 +223,50 @@ def check_link(url: str, retries: int = 1) -> tuple[str, str | None]:
     return last, None
 
 
+def pdf_path(entry: dict, has_file) -> tuple[str | None, str | None]:
+    """(site path, edition) by the article page's rule (src/lib/paper-pdf.ts).
+    The ICSAC edition is <key>-icsac.pdf beside the author's <key>.pdf; a
+    Zenodo-route paper always has one, a Crossref-route paper once the file is in
+    the site's tree. has_file(path) answers for the tree the registry was read from."""
+    rid = str(entry.get("record_id") or "").strip()
+    sub = str(entry.get("sub_id") or "").strip()
+    if rid:
+        return f"/papers/{rid}-icsac.pdf", "ICSAC edition"
+    if sub:
+        covered = f"/papers/{sub}-icsac.pdf"
+        if has_file(covered):
+            return covered, "ICSAC edition"
+        return f"/papers/{sub}.pdf", "author's original"
+    return None, None
+
+
+def check_pdf(url: str) -> str:
+    """One HEAD request: 'reachable' only for a 200 that says application/pdf.
+    HEAD, so the file isn't downloaded (and the site's usage counter, which
+    counts downloads, doesn't count it)."""
+    req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+            ctype = (r.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            if r.status != 200:
+                return f"couldn't reach (HTTP {r.status})"
+            if ctype != "application/pdf":
+                return f"couldn't reach (not a PDF: {ctype or 'no content type'})"
+            return "reachable"
+    except urllib.error.HTTPError as e:
+        return f"couldn't reach (HTTP {e.code})"
+    except urllib.error.URLError as e:
+        if isinstance(e.reason, (socket.timeout, TimeoutError)):
+            return "couldn't reach (timed out)"
+        if isinstance(e.reason, socket.gaierror):
+            return "couldn't reach (host not found)"
+        return f"couldn't reach ({str(e.reason)[:60]})"
+    except (socket.timeout, TimeoutError):
+        return "couldn't reach (timed out)"
+    except Exception as e:  # a malformed response must not end the run
+        return f"couldn't reach ({type(e).__name__})"
+
+
 def crossref_supplement(doi: str) -> tuple[str, list[str]]:
     """('ok', ids) or ("couldn't check (reason)", []) for an ICSAC-prefix DOI."""
     url = "https://api.crossref.org/works/" + urllib.parse.quote(doi, safe="/")
@@ -225,12 +282,14 @@ def crossref_supplement(doi: str) -> tuple[str, list[str]]:
 
 # ── build ───────────────────────────────────────────────────────────────────
 
-def build_rows(registry: list[dict], volumes: list[dict], check: bool) -> list[dict]:
+def build_rows(registry: list[dict], volumes: list[dict], check: bool,
+               has_file=lambda path: False, pdf_base: str = SITE) -> list[dict]:
     ordered = sorted(registry, key=lambda e: (e["accepted_date"][:10], bare_doi(e["doi"]).lower()))
     rows = []
     for e in ordered:
         vol = volume_for(e["accepted_date"], volumes)
         link = (e.get("code_data_url") or "").strip() or None
+        pdf, edition = pdf_path(e, has_file)
         row = {
             "volume": vol["volume"] if vol else None,
             "volume_year": vol["year"] if vol else None,
@@ -238,6 +297,9 @@ def build_rows(registry: list[dict], volumes: list[dict], check: bool) -> list[d
             "title": re.sub(r"\s+", " ", e["title"]).strip(),
             "article_url": f"{SITE}/publications/{e['slug']}",
             "accepted": e["accepted_date"][:10],
+            "pdf_url": f"{pdf_base}{pdf}" if pdf else None,
+            "pdf_edition": edition,
+            "pdf_status": (check_pdf(f"{pdf_base}{pdf}") if check else "not checked") if pdf else None,
             "code_data_url": link,
             "hosted_on": None,
             "hosted_by": None,
@@ -260,15 +322,30 @@ def md(text: str) -> str:
     return (text or "").replace("\\", "\\\\").replace("|", "\\|").replace("[", "\\[").replace("]", "\\]").replace("\n", " ")
 
 
-def render_readme(rows: list[dict], updated: str) -> str:
+def all_cc_by(registry: list[dict]) -> bool:
+    """True when every article is CC BY 4.0 on record. A Crossref-route article
+    carries license_url; the Zenodo-route backfile (record_id) carries none in the
+    registry, and its deposits are CC BY 4.0 (checked against the Zenodo API on
+    2026-10-18). Any other case reads as not known."""
+    for e in registry:
+        lic = (e.get("license_url") or "").strip()
+        if lic != CC_BY_4 and not (not lic and e.get("record_id")):
+            return False
+    return True
+
+
+def render_readme(rows: list[dict], updated: str, cc_by: bool) -> str:
     out = io.StringIO()
     w = out.write
-    w("# Persistence: code and data index\n\n")
-    w("Links to the code and data behind each article in *Persistence*, the journal of the "
-      "Institute for Complexity Science and Advanced Computing (ICSAC).\n\n")
+    w("# Persistence\n\n")
+    w("An index of the articles in *Persistence*, the journal of the Institute for Complexity "
+      "Science and Advanced Computing (ICSAC): each article's page, DOI and PDF on "
+      "icsacinstitute.org, and the link to the code and data behind it.\n\n")
     w("This repository holds links only. Each author keeps their code and data wherever they "
       "choose, and ICSAC links to it. ICSAC doesn't host, run or maintain the linked material, "
-      "and nothing here is a copy of it.\n\n")
+      "and nothing here is a copy of it. The PDF links go to the ICSAC edition of each article "
+      "(one cover page in front of the author's unchanged manuscript), or to the author's "
+      "original where there is no ICSAC edition.\n\n")
     w("The table is generated from the journal's article registry, the same record each article "
       f"page on [icsacinstitute.org]({SITE}/journal/) is built from. Please don't edit it by hand: "
       "send corrections to help@icsacinstitute.org.\n\n")
@@ -280,11 +357,18 @@ def render_readme(rows: list[dict], updated: str) -> str:
     # Newest volume first, as /journal lists them; rows inside a volume in acceptance order.
     for (vol, year) in sorted(groups, key=lambda k: (k[0] is None, -int(k[1] or 0), k[0] or "")):
         w(f"\n## Volume {vol} ({year})\n\n" if vol else "\n## Not assigned to a volume\n\n")
-        w("| Article | DOI | Code and data | Hosted by | Link check |\n")
-        w("|---|---|---|---|---|\n")
+        w("| Article | DOI | PDF | Code and data | Hosted by | Link check |\n")
+        w("|---|---|---|---|---|---|\n")
         for r in groups[(vol, year)]:
             article = f"[{md(r['title'])}](<{r['article_url']}>)"
             doi = f"[{md(r['doi'])}](<https://doi.org/{r['doi']}>)"
+            if r["pdf_url"]:
+                label = "PDF" if r["pdf_edition"] == "ICSAC edition" else "PDF (author's original)"
+                pdf = f"[{label}](<{r['pdf_url']}>)"
+                if r["pdf_status"] not in ("reachable", "not checked"):
+                    pdf += ", " + md(r["pdf_status"][:1].upper() + r["pdf_status"][1:])
+            else:
+                pdf = "No PDF on the site"
             if r["code_data_url"]:
                 code = f"[{md(r['code_data_url'])}](<{r['code_data_url']}>)"
                 hosted = f"{r['hosted_by']}, on {md(r['hosted_on'])}"
@@ -292,14 +376,22 @@ def render_readme(rows: list[dict], updated: str) -> str:
                     r["link_status"], md(r["link_status"][:1].upper() + r["link_status"][1:]))
             else:
                 code, hosted, check = "No link on record", "", ""
-            w(f"| {article} | {doi} | {code} | {hosted} | {check} |\n")
+            w(f"| {article} | {doi} | {pdf} | {code} | {hosted} | {check} |\n")
     w("\nMachine-readable copies: [index.json](index.json), [index.csv](index.csv).\n\n")
+    w("## Licence\n\n")
+    w("This index (this README, index.json, index.csv) and the script that builds it are "
+      "dedicated to the public domain under CC0 1.0: see [LICENSE](LICENSE). That covers the "
+      "index only. " + ("The articles are published under CC BY 4.0, as each article's PDF and DOI "
+                        "record state" if cc_by else
+                        "Each article is published under the licence its PDF and DOI record state")
+      + ", and each article's code and data are under their author's licence.\n\n")
     w(f"Last changed: {updated}.\n")
     return out.getvalue()
 
 
 def render_csv(rows: list[dict]) -> str:
     cols = ["volume", "volume_year", "doi", "title", "article_url", "accepted",
+            "pdf_url", "pdf_edition", "pdf_status",
             "code_data_url", "hosted_on", "hosted_by", "link_status"]
     buf = io.StringIO()
     wr = csv.DictWriter(buf, fieldnames=cols, lineterminator="\n")
@@ -339,6 +431,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-crossref", action="store_true", help="skip the Crossref cross-check")
     ap.add_argument("--dry-run", action="store_true", help="print the README; write nothing")
     ap.add_argument("--today", help=argparse.SUPPRESS)
+    ap.add_argument("--pdf-base", default=SITE, help=argparse.SUPPRESS)  # tests: a local server
     a = ap.parse_args(argv)
 
     try:
@@ -352,13 +445,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[code-index] couldn't build: {e}", file=sys.stderr)
         return 2
 
-    rows = build_rows(registry, volumes, check=not a.no_check)
+    if a.registry:   # file mode: the PDFs are looked up in the site checkout on disk
+        has_file = lambda path: (a.site_repo / PUBLIC_DIR / path.lstrip("/")).is_file()
+    else:            # git mode: in the same tree the registry was read from
+        has_file = lambda path: git_has_file(a.site_repo, a.ref, f"{PUBLIC_DIR}/{path.lstrip('/')}")
+    rows = build_rows(registry, volumes, check=not a.no_check, has_file=has_file, pdf_base=a.pdf_base)
     if len(rows) != len(registry):  # never cut silently
         print(f"[code-index] couldn't build: {len(registry)} registry rows but {len(rows)} index rows", file=sys.stderr)
         return 2
 
     needs_look = []
     for r in rows:
+        if r["pdf_status"] and r["pdf_status"].startswith("couldn't"):
+            needs_look.append(f"{r['doi']}: PDF {r['pdf_status']} ({r['pdf_url']})")
         if r["link_status"] and r["link_status"].startswith("couldn't"):
             needs_look.append(f"{r['doi']}: {r['link_status']} ({r['code_data_url']})")
         if r["hosted_by"] == "ICSAC":
@@ -390,17 +489,21 @@ def main(argv: list[str] | None = None) -> int:
         pass
 
     doc = {
-        "title": "Persistence: code and data index",
+        "title": "Persistence: article index",
         "publisher": "Institute for Complexity Science and Advanced Computing (ICSAC)",
         "journal_url": f"{SITE}/journal/",
         "policy": "Links only. Authors host their own code and data; ICSAC links to it and doesn't host, run or maintain it.",
+        "license": "CC0-1.0 (this index only; each article is under the licence on its own page, its code and data under their author's)",
         "updated": updated,
         "articles": rows,
     }
-    readme = render_readme(rows, updated)
+    readme = render_readme(rows, updated, all_cc_by(registry))
     with_link = sum(1 for r in rows if r["code_data_url"])
+    editions = sum(1 for r in rows if r["pdf_edition"] == "ICSAC edition")
+    originals = sum(1 for r in rows if r["pdf_edition"] == "author's original")
     print(f"[code-index] {len(registry)} article(s) in the registry, {len(rows)} row(s); "
-          f"{with_link} with a code/data link, {len(rows) - with_link} with none on record")
+          f"{with_link} with a code/data link, {len(rows) - with_link} with none on record; "
+          f"PDF: {editions} ICSAC edition, {originals} author's original, {len(rows) - editions - originals} none")
     for line in needs_look:
         print(f"[code-index] NEEDS A LOOK: {line}")
 

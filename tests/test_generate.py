@@ -34,8 +34,22 @@ def check(cond: bool, label: str) -> None:
         print(f"FAIL: {label}")
 
 
+SEEN: list[tuple[str, str]] = []   # (method, path) of every request to /papers/
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
+    def do_HEAD(self):  # noqa: N802
+        SEEN.append(("HEAD", self.path))
+        if self.path in ("/papers/111-icsac.pdf", "/papers/ICSAC-SUB-00042-icsac.pdf", "/papers/ICSAC-SUB-00043.pdf"):
+            self.send_response(200); self.send_header("Content-Type", "application/pdf"); self.end_headers()
+        elif self.path == "/papers/222-icsac.pdf":   # an app shell answering 200 for a missing file
+            self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.end_headers()
+        else:
+            self.send_response(404); self.end_headers()
+
     def do_GET(self):  # noqa: N802
+        if self.path.startswith("/papers/"):
+            SEEN.append(("GET", self.path))
         if self.path == "/ok":
             self.send_response(200); self.end_headers(); self.wfile.write(b"ok")
         elif self.path == "/moved":
@@ -156,8 +170,99 @@ def main() -> int:
     finally:
         srv.shutdown()
 
+    pdf_column()
     print(f"{PASSES} passed, {len(FAILS)} failed")
     return 1 if FAILS else 0
+
+
+def pdf_column() -> None:
+    """The PDF column: the page's rule picks the file, one HEAD checks it."""
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    cc_by = "https://creativecommons.org/licenses/by/4.0/"
+    reg_rows = [
+        {"slug": "zenodo-ok", "title": "Zenodo route", "doi": "10.5281/zenodo.111", "accepted_date": "2026-04-19",
+         "record_id": "111"},
+        {"slug": "zenodo-html", "title": "Answers HTML", "doi": "10.5281/zenodo.222", "accepted_date": "2026-04-19",
+         "record_id": "222"},
+        {"slug": "covered", "title": "Covered", "doi": "10.5555/icsac.2026.042", "accepted_date": "2026-09-29",
+         "sub_id": "ICSAC-SUB-00042", "license_url": cc_by},
+        {"slug": "bare-only", "title": "Bare only", "doi": "10.5555/icsac.2026.043", "accepted_date": "2026-09-30",
+         "sub_id": "ICSAC-SUB-00043", "license_url": cc_by},
+        {"slug": "missing", "title": "Missing", "doi": "10.5555/icsac.2026.044", "accepted_date": "2026-10-01",
+         "sub_id": "ICSAC-SUB-00044", "license_url": cc_by},
+        {"slug": "doi-only", "title": "DOI only", "doi": "10.5555/x.1", "accepted_date": "2026-10-02",
+         "license_url": cc_by},
+    ]
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            t = Path(td)
+            site = t / "site"
+            (site / "public/papers").mkdir(parents=True)
+            (site / "public/papers/ICSAC-SUB-00042-icsac.pdf").write_bytes(b"%PDF-1.7")
+            reg = t / "accepted.json"; reg.write_text(json.dumps(reg_rows))
+            vol = t / "persistence.ts"; vol.write_text(VOLUMES_TS)
+            out = t / "out"
+            SEEN.clear()
+            code, log = run(["--registry", str(reg), "--volumes", str(vol), "--site-repo", str(site),
+                             "--out", str(out), "--no-crossref", "--pdf-base", base])
+            rows = {r["article_url"].rsplit("/", 1)[1]: r for r in json.loads((out / "index.json").read_text())["articles"]}
+            check(len(rows) == 6, "pdf: every row kept")
+            check(rows["covered"]["pdf_url"] == f"{base}/papers/ICSAC-SUB-00042-icsac.pdf"
+                  and rows["covered"]["pdf_edition"] == "ICSAC edition", "pdf: the covered edition is preferred when it exists")
+            check(rows["bare-only"]["pdf_url"] == f"{base}/papers/ICSAC-SUB-00043.pdf"
+                  and rows["bare-only"]["pdf_edition"] == "author's original", "pdf: the bare file is the fallback")
+            check(rows["zenodo-ok"]["pdf_url"].endswith("/papers/111-icsac.pdf"), "pdf: a Zenodo-route paper links its ICSAC edition")
+            check(rows["covered"]["pdf_status"] == "reachable" and rows["bare-only"]["pdf_status"] == "reachable",
+                  "pdf: 200 + application/pdf reads reachable")
+            check(rows["missing"]["pdf_status"] == "couldn't reach (HTTP 404)", "pdf: a missing file reads couldn't reach (HTTP 404)")
+            check(rows["zenodo-html"]["pdf_status"] == "couldn't reach (not a PDF: text/html)",
+                  "pdf: a 200 that isn't a PDF reads couldn't reach (not a PDF)")
+            check(rows["doi-only"]["pdf_url"] is None and rows["doi-only"]["pdf_status"] is None,
+                  "pdf: no file on the site, no link and no request")
+            check(code == 1 and "PDF couldn't reach (HTTP 404)" in log and "not a PDF" in log,
+                  "pdf: an unreachable PDF makes the run exit 1 and is named")
+            check(all(m == "HEAD" for m, _ in SEEN) and len(SEEN) == 5 and len(set(SEEN)) == 5,
+                  f"pdf: one HEAD per PDF, never a GET ({SEEN})")
+            readme = (out / "README.md").read_text()
+            check("| PDF |" in readme and "[PDF](<" in readme, "pdf: README has a PDF column with links")
+            check("PDF (author's original)" in readme, "pdf: a fallback row says it's the author's original")
+            check("Couldn't reach (not a PDF: text/html)" in readme, "pdf: README shows the failed check")
+            check("No PDF on the site" in readme, "pdf: README says when there is no PDF")
+            check("CC0 1.0" in readme and "published under CC BY 4.0, as each article's PDF and DOI record state" in readme,
+                  "licence: CC0 for the index; the articles CC BY 4.0 when every one is on record as CC BY 4.0")
+            check(readme.count("\n| [") == 6, "pdf: six table rows")
+            csv_head = (out / "index.csv").read_text().splitlines()[0]
+            check("pdf_url,pdf_edition,pdf_status" in csv_head, "pdf: CSV carries the PDF fields")
+
+            reg.write_text(json.dumps(reg_rows[:2] + [dict(reg_rows[2], license_url="https://example.com/own")]))
+            code, _ = run(["--registry", str(reg), "--volumes", str(vol), "--site-repo", str(site),
+                           "--out", str(t / "out2"), "--no-check", "--no-crossref"])
+            check("under the licence its PDF and DOI record state" in (t / "out2/README.md").read_text(),
+                  "licence: any other licence on record -> the README points at each article's own statement")
+
+            # git mode looks for the covered file in the tree at the ref, not the working copy
+            repo = t / "gitsite"
+            (repo / "src/data").mkdir(parents=True); (repo / "src/lib").mkdir(parents=True)
+            (repo / "public/papers").mkdir(parents=True)
+            (repo / "src/data/accepted.json").write_text(json.dumps(reg_rows[2:4]))
+            (repo / "src/lib/persistence.ts").write_text(VOLUMES_TS)
+            (repo / "public/papers/ICSAC-SUB-00042-icsac.pdf").write_bytes(b"%PDF-1.7")
+            g = ["git", "-C", str(repo), "-c", "user.email=test@example.com", "-c", "user.name=test"]
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            subprocess.run(g + ["add", "-A"], check=True)
+            subprocess.run(g + ["commit", "-q", "-m", "fixture"], check=True)
+            (repo / "public/papers/ICSAC-SUB-00043-icsac.pdf").write_bytes(b"%PDF-1.7")   # not committed
+            code, _ = run(["--site-repo", str(repo), "--ref", "HEAD", "--out", str(t / "out3"), "--no-check", "--no-crossref"])
+            rows = {r["article_url"].rsplit("/", 1)[1]: r for r in json.loads((t / "out3/index.json").read_text())["articles"]}
+            check(rows["covered"]["pdf_url"] == "https://icsacinstitute.org/papers/ICSAC-SUB-00042-icsac.pdf",
+                  "git mode: a committed covered file is linked")
+            check(rows["bare-only"]["pdf_url"] == "https://icsacinstitute.org/papers/ICSAC-SUB-00043.pdf",
+                  "git mode: an uncommitted covered file is not")
+            check(rows["covered"]["pdf_status"] == "not checked", "--no-check: PDFs read not checked")
+    finally:
+        srv.shutdown()
 
 
 if __name__ == "__main__":
